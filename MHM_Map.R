@@ -3,6 +3,7 @@
 
 library(tidyverse)
 library(ggplot2)
+library(dplyr)
 library(mapview)
 library(sf)
 
@@ -25,11 +26,22 @@ mapview(clinic_locations,
 
 
 
+# mapping clinic locations only in USA
+clinic_locations_usa <- MHM_Data %>%
+  drop_na(country, clinic_name, latitude, longitude) %>%
+  filter(country == "United States")
 
+clinic_locations_usa %>% 
+  glimpse()
 
+mapview(clinic_locations_usa,
+      xcol = "longitude",
+      ycol = "latitude",
+      crs = 4269, 
+      grid = FALSE,
+      label = "MHV Clinics") # needs to be corrected
 
-
-
+# maps specific to health issues 
 
 
 
