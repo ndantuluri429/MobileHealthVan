@@ -26,3 +26,6 @@ all_tracts_with_clinic <- unique(all_clinics_with_tracts$GEOID)
 # Added column to all_tracts where value 1 indicates that the tract has a clinic, 
 # and value 0 indicates that the tract does not have a clinic 
 all_tracts$has_clinic <- ifelse(all_tracts$GEOID %in% all_tracts_with_clinic, 1, 0)
+
+# Data set with tracts, their crude prevalences, and column indicating if they have clinic or not 
+all_tracts_with_clinic_and_crudeprev <- geo_join(all_tracts, census_tract_data, "GEOID", "tractfips")
