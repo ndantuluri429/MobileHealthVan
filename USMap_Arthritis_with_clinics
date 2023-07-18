@@ -1,0 +1,51 @@
+library(tigris)
+library(dplyr)
+library(leaflet)
+library(readxl)
+
+mhm_data=read_excel('MHM-Data.xlsx')
+mhm_filtered <- subset(mhm_data, country == "United States")
+mhm_data_filtered <- mhm_filtered[complete.cases(mhm_filtered$latitude, mhm_filtered$longitude), ]
+
+
+subset_US_arthritis <- census_tract_data[,c("tractfips","arthritis_crudeprev" )]
+colnames(subset_US_arthritis) <- c("GEOID", "value")
+#subset_mass_arthritis$GEOID <- as.numeric(subset_mass_arthritis$GEOID)
+
+all_tracts <- tracts(cb = TRUE, year = 2019)
+# Error: A state must be specified for this year/dataset combination. (before 2019) - would use 2015 data as specified in PLACES website if this wasn't the case
+# Before: all_tracts <- tracts(cb = TRUE, year = 2022) - less NA values if 2019 is used 
+
+# Very slow
+all_tracts %>%
+  leaflet() %>%
+  addTiles() %>%
+  addPolygons(popup=~GEOID)
+
+us_merged_arthritis <- geo_join(all_tracts, subset_US_arthritis, "GEOID", "GEOID")
+
+pal <- colorNumeric("Reds", domain=us_merged_arthritis$value)
+
+
+popup_us_arth <- paste0("Crude Prevalence: ", as.character(us_merged_arthritis$value),
+                          "\nTract: ", as.character(us_merged_arthritis$GEOID))
+leaflet() %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  setView(-119.3552, 36.7586, zoom = 5) %>%
+  addPolygons(data=us_merged_arthritis,
+              fillColor =~pal(us_merged_arthritis$value),
+              fillOpacity = .7,
+              weight = .4,
+              smoothFactor = .2,
+              popup =~popup_us_arth) %>%
+  addMarkers(data = mhm_data_filtered, lng=mhm_data_filtered$longitude, lat=mhm_data_filtered$latitude, popup=mhm_data_filtered$clinic_name) %>%
+  # addMarkers(lng=-71.07477, lat=42.29042, popup="The Family Van") %>%
+  addLegend(pal=pal,
+            values=us_merged_arthritis$value,
+            position = "bottomright",
+            title="Crude Prevalence Arthritis")
+
+
+# Warning message:
+# sf layer has inconsistent datum (+proj=longlat +datum=NAD83 +no_defs).
+# Need '+proj=longlat +datum=WGS84' 
