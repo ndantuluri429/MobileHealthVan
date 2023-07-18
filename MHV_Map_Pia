@@ -29,3 +29,29 @@ all_tracts$has_clinic <- ifelse(all_tracts$GEOID %in% all_tracts_with_clinic, 1,
 
 # Data set with tracts, their crude prevalences, and column indicating if they have clinic or not 
 all_tracts_with_clinic_and_crudeprev <- geo_join(all_tracts, census_tract_data, "GEOID", "tractfips")
+
+
+# Box plots crude prevalence clinic vs no clinic 
+# (Should filter clincis by category / services they provide)
+
+#Arthritis 
+
+arth_clinic_vs_noclinic <- boxplot(arthritis_crudeprev~has_clinic,
+                                   data=all_tracts_with_clinic_and_crudeprev,
+                                   main="Arthritis crude prevalence in tracts w/ clinic vs. no clinic",
+                                   xlab="Has clinic?",
+                                   ylab="Arthritis crude prevalence",
+                                   col="orange",
+                                   border="brown"
+)
+
+#BP High
+
+bphigh_clinic_vs_noclinic <-boxplot(bphigh_crudeprev~has_clinic,
+                                    data=all_tracts_with_clinic_and_crudeprev,
+                                    main="BP high crude prevalence in tracts w/ clinic vs. no clinic",
+                                    xlab="Has clinic?",
+                                    ylab="BP high crude prevalence",
+                                    col="orange",
+                                    border="brown"
+)
