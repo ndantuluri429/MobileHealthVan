@@ -1,0 +1,148 @@
+library(shiny)
+library(shinydashboard)
+library(tigris)
+library(sf)
+# -----------------------
+
+# State names
+state_names = sort(unique(census_tract_data$statedesc))
+
+# Variables for census tract data 
+# variable_names = variable_descriptions$Variable
+variable_names = colnames(census_tract_data)[grep("_crudeprev$", colnames(census_tract_data))]
+
+# -----------------------
+
+# Mobile Health Map Data
+mhm_data=read_excel('/Users/piadavis/500 Cities/MHM-Data.xlsx')
+# US only
+mhm_filtered <- subset(mhm_data, country == "United States")
+# Clinics with location only
+mhm_data_filtered <- mhm_filtered[complete.cases(mhm_filtered$latitude, mhm_filtered$longitude), ]
+
+# Change value for Whittier Street Health Center Mobile Health Van, zip code was incorrect
+row_to_change <- which(mhm_data_filtered$clinic_name == "Whittier Street Health Center Mobile Health Van")
+mhm_data_filtered$zip_postal_code[row_to_change] <- "02120"
+
+# Observations that have NA values for state, but have postal code
+na_indices <- which(is.na(mhm_data_filtered$geo_state) & nchar(mhm_data_filtered$zip_postal_code) == 5)
+
+# Add state to state column based on clinics' zip code
+zip_to_state <- function(postal_code) {
+  return(reverse_zipcode(postal_code)$state)
+}
+
+for (index in na_indices) {
+  mhm_data_filtered$geo_state[index] <- zip_to_state(mhm_data_filtered$zip_postal_code[index])
+}
+
+
+# -----------------------
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Mobile Health Clinic Data"),
+  dashboardSidebar(
+    selectInput("state_select", "Select State: ",choices = c("Select a State", state_names), selected = "Select a State"),
+    selectInput("variable_select", "Select Variable: ",choices = c("Select a Variable", variable_names), selected = "Select a Variable"),
+    # Change clinic categories
+    selectInput("mhclinic_select", "Select Clinic Category: ",choices = c("All Categories", variable_names), selected = "Categories")
+  ),
+  dashboardBody(
+    leafletOutput("state_map")
+  )
+)
+
+server <- function(input, output) {
+  # Load the U.S. tract shapefile, starts at MA because whole country cannot be mapped? I think
+  us_tracts <- tracts(state="MA", cb=T, year = 2019)
+  
+  # Observe changes in the state selection and update the map accordingly
+  observe({
+    
+    # For state map with tracts, no PLACES data yet
+    state_selected <- input$state_select
+    
+    # Filter the data for the selected state
+    if (state_selected == "Select a State") {
+      state_map_data <- us_tracts
+    } else {
+      if (state_selected == "District of Columbia") {
+        state_selected <- "DC"
+      } else {
+        state_selected <- state.abb[match(state_selected, state.name)]
+      }
+      state_map_data <- tracts(state=state_selected, cb=T, year = 2015)
+    }
+    
+    
+
+    # For PLACES data layer
+    state_census_tract_data <- census_tract_data[census_tract_data$stateabbr == state_selected, ]
+    
+    variable_selected <- input$variable_select
+    
+    if (variable_selected == "Select a Variable") {
+      subset_state_variable <- state_census_tract_data[,c("tractfips","access2_crudeprev")]
+    } else {
+      subset_state_variable <- state_census_tract_data[,c("tractfips",variable_selected)]
+    }
+    colnames(subset_state_variable) <- c("GEOID", "value")
+    
+    state_variable_merged <- geo_join(state_map_data, subset_state_variable, "GEOID", "GEOID")
+    
+    # Palette (doesn't work? - works now)
+    pal <- colorNumeric("Reds", domain = NULL, na.color = "gray")         #can change domain if needed
+    # pal <- colorNumeric("Reds", domain=state_variable_merged$value, na.color = "gray")
+
+    #Pop up
+    popup_value_tract <- reactive ({
+      paste0("Crude Prevalence: ", as.character(state_variable_merged$value),
+             "\nTract: ", as.character(state_variable_merged$GEOID))
+    })
+    
+    # For mapping clinics by state - THIS IS WHERE I STOPPED
+    # mhm_filtered_state <- subset(mhm_data_filtered, toupper(geo_state) %in% c(toupper(state_selected), state_selected_abbr))
+    
+
+    # Render the state map with tracts (works)
+    output$state_map <- renderLeaflet({
+      state_map_data %>%
+        leaflet() %>%
+        addTiles() %>%
+        addPolygons(popup = ~GEOID)
+      
+      leaflet() %>%
+        addProviderTiles("CartoDB.Positron") %>%
+        setView(state_census_tract_data$longitude[1], state_census_tract_data$latitude[1], 
+                if (state_selected== "DC") {
+                  zoom = 10
+                } else if (state_selected== "AK") {
+                  zoom = 3
+                } else if (state_selected %in% c("RI", "NJ", "CT", "NH", "HI", "VT", "DE")) {
+                  zoom = 7
+                } else {
+                  zoom = 5
+                } 
+                ) %>%
+        addPolygons(data=state_variable_merged ,
+                    fillColor = ~pal(state_variable_merged$value),
+                    fillOpacity = .7,
+                    weight = .4,
+                    smoothFactor = .2,
+                    popup =~popup_value_tract()) %>%
+        # have to change this
+        addMarkers(data = dental_mhm_mass, 
+                   lng=dental_mhm_mass$longitude, lat=dental_mhm_mass$latitude, popup=dental_mhm_mass$clinic_name) %>%
+        addLegend(pal=pal,
+                  values=state_variable_merged$value,
+                  position = "bottomright",
+                  title="Crude Prevalence")
+
+    })
+    
+  })
+  
+  
+}
+
+shinyApp(ui, server)
