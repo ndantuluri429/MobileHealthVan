@@ -2,6 +2,10 @@ library(shiny)
 library(shinydashboard)
 library(tigris)
 library(sf)
+library(leaflet)
+library(readxl)
+library(zipcodeR)
+
 # -----------------------
 
 # State names
@@ -45,7 +49,7 @@ ui <- dashboardPage(
     selectInput("state_select", "Select State: ",choices = c("Select a State", state_names), selected = "Select a State"),
     selectInput("variable_select", "Select Variable: ",choices = c("Select a Variable", variable_names), selected = "Select a Variable"),
     # Change clinic categories
-    selectInput("mhclinic_select", "Select Clinic Category: ",choices = c("All Categories", variable_names), selected = "Categories")
+    selectInput("mhclinic_select", "Select Clinic Category: ",choices = c("All Categories", variable_names), selected = "All Categories")
   ),
   dashboardBody(
     leafletOutput("state_map")
@@ -61,6 +65,8 @@ server <- function(input, output) {
     
     # For state map with tracts, no PLACES data yet
     state_selected <- input$state_select
+    # below is for use in MHM data, full name of state
+    state_selected_full <- input$state_select
     
     # Filter the data for the selected state
     if (state_selected == "Select a State") {
@@ -102,7 +108,9 @@ server <- function(input, output) {
     
     # For mapping clinics by state - THIS IS WHERE I STOPPED
     # mhm_filtered_state <- subset(mhm_data_filtered, toupper(geo_state) %in% c(toupper(state_selected), state_selected_abbr))
-    
+    if (state_selected != "Select a State") {
+      mhm_data_filtered <- subset(mhm_data_filtered, toupper(geo_state) %in% c(toupper(state_selected_full), state_selected))
+    }
 
     # Render the state map with tracts (works)
     output$state_map <- renderLeaflet({
@@ -131,8 +139,14 @@ server <- function(input, output) {
                     smoothFactor = .2,
                     popup =~popup_value_tract()) %>%
         # have to change this
-        addMarkers(data = dental_mhm_mass, 
-                   lng=dental_mhm_mass$longitude, lat=dental_mhm_mass$latitude, popup=dental_mhm_mass$clinic_name) %>%
+        addMarkers( data = mhm_data_filtered, 
+                    lng=mhm_data_filtered$longitude, lat=mhm_data_filtered$latitude, popup=mhm_data_filtered$clinic_name) %>%
+        
+        # data = mhm_data_filtered, 
+        # lng=mhm_data_filtered$longitude, lat=mhm_data_filtered$latitude, popup=mhm_data_filtered$clinic_name) %>%
+        
+        # mhm_filtered_mass <- subset(mhm_data_filtered, state_province %in% c("Massachusetts", "Ma"))
+        
         addLegend(pal=pal,
                   values=state_variable_merged$value,
                   position = "bottomright",
