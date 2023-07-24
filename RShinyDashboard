@@ -17,6 +17,14 @@ variable_names = colnames(census_tract_data)[grep("_crudeprev$", colnames(census
 
 # -----------------------
 
+census_tract_data <- read_csv("/Users/piadavis/500 Cities/PLACES__Census_Tract_Data__GIS_Friendly_Format___2022_release.csv", show_col_types = FALSE)
+names(census_tract_data) <- tolower(names(census_tract_data))
+
+census_tract_data$longitude <- as.numeric(sub(".*\\((-?\\d+\\.\\d+)\\s-?\\d+\\.\\d+\\).*", "\\1", census_tract_data$geolocation))
+census_tract_data$latitude <- as.numeric(sub(".*\\(-?\\d+\\.\\d+\\s(-?\\d+\\.\\d+)\\).*", "\\1", census_tract_data$geolocation))
+
+# -----------------------
+
 # Mobile Health Map Data
 mhm_data=read_excel('/Users/piadavis/500 Cities/MHM-Data.xlsx')
 # US only
@@ -77,7 +85,8 @@ server <- function(input, output) {
       } else {
         state_selected <- state.abb[match(state_selected, state.name)]
       }
-      state_map_data <- tracts(state=state_selected, cb=T, year = 2015)
+      state_map_data <- tracts(state=state_selected, cb=T, year = 2019)
+      # state_map_data <- tracts(state=state_selected, cb=T, year = 2015)
     }
     
     
@@ -92,6 +101,8 @@ server <- function(input, output) {
     } else {
       subset_state_variable <- state_census_tract_data[,c("tractfips",variable_selected)]
     }
+    # subset_state_variable <- state_census_tract_data[,c("tractfips",variable_selected)]
+    
     colnames(subset_state_variable) <- c("GEOID", "value")
     
     state_variable_merged <- geo_join(state_map_data, subset_state_variable, "GEOID", "GEOID")
@@ -131,13 +142,16 @@ server <- function(input, output) {
                 } else {
                   zoom = 5
                 } 
-                ) %>%
-        addPolygons(data=state_variable_merged ,
+                ) %>% 
+
+        addPolygons(data=state_variable_merged,
                     fillColor = ~pal(state_variable_merged$value),
                     fillOpacity = .7,
                     weight = .4,
                     smoothFactor = .2,
-                    popup =~popup_value_tract()) %>%
+                    popup =~popup_value_tract()
+                    ) %>%
+         
         # have to change this
         addMarkers( data = mhm_data_filtered, 
                     lng=mhm_data_filtered$longitude, lat=mhm_data_filtered$latitude, popup=mhm_data_filtered$clinic_name) %>%
