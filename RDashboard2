@@ -1,0 +1,236 @@
+library(shiny)
+library(shinydashboard)
+library(tigris)
+library(sf)
+library(leaflet)
+library(readxl)
+library(zipcodeR)
+
+# -----------------------
+
+# State names
+state_names = sort(unique(census_tract_data$statedesc))
+
+# Variables for census tract data 
+# variable_names = variable_descriptions$Variable
+# variable_names = colnames(census_tract_data)[grep("_crudeprev$", colnames(census_tract_data))]
+
+# -----------------------
+
+# census_tract_data <- read_csv("/Users/piadavis/500 Cities/PLACES__Census_Tract_Data__GIS_Friendly_Format___2022_release.csv", show_col_types = FALSE)
+census_tract_data <- read_csv("PLACES__Census_Tract_Data__GIS_Friendly_Format___2022_release.csv", show_col_types = FALSE)
+names(census_tract_data) <- tolower(names(census_tract_data))
+
+# add latitude and longitude columns from geolocation
+census_tract_data$longitude <- as.numeric(sub(".*\\((-?\\d+\\.\\d+)\\s-?\\d+\\.\\d+\\).*", "\\1", census_tract_data$geolocation))
+census_tract_data$latitude <- as.numeric(sub(".*\\(-?\\d+\\.\\d+\\s(-?\\d+\\.\\d+)\\).*", "\\1", census_tract_data$geolocation))
+
+# -----------------------
+
+# Mobile Health Map Data
+# mhm_data=read_excel('/Users/piadavis/500 Cities/MHM-Data.xlsx')
+mhm_data=read_excel('MHM-Data.xlsx')
+# US only
+mhm_filtered <- subset(mhm_data, country == "United States")
+# Clinics with location only
+mhm_data_filtered <- mhm_filtered[complete.cases(mhm_filtered$latitude, mhm_filtered$longitude), ]
+
+# Change value for Whittier Street Health Center Mobile Health Van, zip code was incorrect
+row_to_change <- which(mhm_data_filtered$clinic_name == "Whittier Street Health Center Mobile Health Van")
+mhm_data_filtered$zip_postal_code[row_to_change] <- "02120"
+
+# Observations that have NA values for state, but have postal code
+na_indices <- which(is.na(mhm_data_filtered$geo_state) & nchar(mhm_data_filtered$zip_postal_code) == 5)
+
+# Add state to state column based on clinics' zip code
+zip_to_state <- function(postal_code) {
+  return(reverse_zipcode(postal_code)$state)
+}
+
+for (index in na_indices) {
+  mhm_data_filtered$geo_state[index] <- zip_to_state(mhm_data_filtered$zip_postal_code[index])
+}
+
+# -----------------------
+# Variables for census tract data 
+
+crudeprevs_descriptions <- c("Current lack of health insurance among adults aged 18-64 years", "Arthritis among adults aged >=18 years", "Crude prevalence of binge drinking among adults aged >=18 years", 
+                             "High blood pressure among adults aged >=18 years", "Taking medicine for high blood pressure control among adults aged >=18 years with high blood pressure", "Cancer (excluding skin cancer) among adults aged >=18 years", 
+                             "Current asthma among adults aged >=18 years", "cervical cancer screening among adult women aged 21–65 years", "Coronary heart disease among adults aged >=18 years", "Visits to doctor for routine checkup within the past year among adults aged >=18 years",
+                             "cholesterol screening among adults aged >=18 years", "Fecal occult blood test, sigmoidoscopy, or colonoscopy among adults aged 50–75 years", "Chronic obstructive pulmonary disease among adults aged >=18 years", 
+                             "Older adult men aged >=65 years who are up to date on a core set of clinical preventive services: Flu shot past year, PPV shot ever, Colorectal cancer screening", 
+                             "Older adult women aged >=65 years who are up to date on a core set of clinical preventive services: Flu shot past year, PPV shot ever, Colorectal cancer screening, and Mammogram past 2 years", 
+                             "Current smoking among adults aged >=18 years", "Visits to dentist or dental clinic among adults aged >=18 years", "Depression among adults aged >=18 years", "Diagnosed diabetes among adults aged >=18 years", 
+                             "Fair or poor health among adults aged >=18 years", "High cholesterol among adults aged >=18 years who have been screened in the past 5 years", "Chronic kidney disease among adults aged >=18 years", "No leisure-time physical activity among adults aged >=18 years", 
+                             "Mammography use among women aged 50–74 years", "Mental health not good for >=14 days among adults aged >=18 years", "Obesity among adults aged >=18 years", "Physical health not good for >=14 days among adults aged >=18 years", "Sleeping less than 7 hours among adults aged >=18 years", 
+                             "Stroke among adults aged >=18 years", "All teeth lost among adults aged >=65 years")
+new_colnames <- colnames(census_tract_data)[grep("_crudeprev$", colnames(census_tract_data))]
+variable_descriptions <- data.frame("Variable" = new_colnames, "Description" = crudeprevs_descriptions)
+variable_short <- c("Lack of health insurance", "Arthritis", "Binge Drinking", "High Blood Pressure", "Medicine for High BP", "Cancer", "Asthma", "Cervical Cancer", "Coronary Heart Disease","Routine Checkup","Cholesterol Screening", "Fecal occult blood test, sigmoidoscopy, or colonoscopy","Chronic obstructive pulmonary disease", "Men Up to Date Core","Women Up to Date Core","Current Smoking", "Dental Visits", "Depression", "Diabetes", "Fair / Poor Health", "High Colesterol", "Chronic Kidney Disease", "No leisure time physical activity","Mammography","Poor Mental Health", "Obesity", "Poor Physical Health", "Poor Sleeping", "Stroke", "Teeth Lost")
+
+variable_descriptions <- transform(variable_descriptions, "Short" = variable_short)
+
+variable_names = sort(variable_descriptions$Short)
+
+
+# For table displayed on Dashboard, so user can see details of each variable
+variable_descriptions_2 <- variable_descriptions[, !colnames(variable_descriptions) %in% "Variable"]
+new_order <- c("Short", "Description")
+variable_descriptions_2 <- variable_descriptions_2[, new_order]
+
+# -----------------------
+# Mobile Health Clinic Categories
+clinic_categories = sort(c("Dental", "Mammography", "Other Specialties", "Primary Care", "Behavioral Health", "Sexual and Reproductive Health", "Vision", "Asthma", "Pediatrics", "Preventive", "Maternal and Infant Health"))
+
+# -----------------------
+
+# New data
+census_data <- readRDS("/Users/piadavis/Downloads/family_van_acs.rds")
+
+# -----------------------
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Mobile Health Clinic Data"),
+  dashboardSidebar(
+    selectInput("state_select", "Select State: ",choices = c("Select a State", state_names), selected = "Select a State"),
+    selectInput("variable_select", "Select Variable: ",choices = c("Select a Variable", variable_names), selected = "Select a Variable"),
+    # Change clinic categories
+    selectInput("mhclinic_select", "Select Clinic Category: ",choices = c("All Categories", clinic_categories), selected = "All Categories")
+  ),
+  dashboardBody(
+    leafletOutput("state_map"),
+    br(),
+    box(title = "Variable Descriptions", dataTableOutput("v_descriptions"), width = 20)
+  )
+)
+
+server <- function(input, output) {
+  # Load the U.S. tract shapefile, starts at MA because whole country cannot be mapped? I think
+  us_tracts <- tracts(state="MA", cb=T, year = 2019)
+  
+  # Observe changes in the state selection and update the map accordingly
+  observe({
+    
+    # For state map with tracts, no PLACES data yet
+    state_selected <- input$state_select
+    # below is for use in MHM data, full name of state
+    state_selected_full <- input$state_select
+    
+    # Filter the data for the selected state
+    if (state_selected == "Select a State") {
+      state_map_data <- us_tracts
+    } else {
+      if (state_selected == "District of Columbia") {
+        state_selected <- "DC"
+      } else {
+        state_selected <- state.abb[match(state_selected, state.name)]
+      }
+      # state_map_data <- tracts(state=state_selected, cb=T, year = 2019)
+      state_map_data <- tracts(state=state_selected, cb=T, year = 2015)
+    }
+    
+    
+
+    # For PLACES data layer
+    state_census_tract_data <- census_tract_data[census_tract_data$stateabbr == state_selected, ]
+    
+    variable_selected <- input$variable_select
+    
+    # variable_selected <- variable_descriptions$Short[variable_descriptions$Variable == variable_selected]
+
+    if (variable_selected == "Select a Variable") {
+      subset_state_variable <- state_census_tract_data[,c("tractfips","access2_crudeprev")]
+    } else {
+      variable_selected <- variable_descriptions$Variable[variable_descriptions$Short == variable_selected]
+      subset_state_variable <- state_census_tract_data[,c("tractfips",variable_selected)]
+    }
+    # subset_state_variable <- state_census_tract_data[,c("tractfips",variable_selected)]
+    
+    colnames(subset_state_variable) <- c("GEOID", "value")
+    
+    state_variable_merged <- geo_join(state_map_data, subset_state_variable, "GEOID", "GEOID")
+    
+    # Palette (doesn't work? - works now)
+    pal <- colorNumeric("Reds", domain = NULL, na.color = "gray")         #can change domain if needed
+    # pal <- colorNumeric("Reds", domain=state_variable_merged$value, na.color = "gray")
+
+    #Pop up
+    popup_value_tract <- reactive ({
+      paste0("Crude Prevalence: ", as.character(state_variable_merged$value),
+             "\nTract: ", as.character(state_variable_merged$GEOID))
+    })
+    
+    # For mapping clinics by state - THIS IS WHERE I STOPPED
+    # mhm_filtered_state <- subset(mhm_data_filtered, toupper(geo_state) %in% c(toupper(state_selected), state_selected_abbr))
+    if (state_selected != "Select a State") {
+      mhm_data_filtered <- subset(mhm_data_filtered, toupper(geo_state) %in% c(toupper(state_selected_full), state_selected))
+    }
+    
+    
+    # MH Clinic Category 
+    category_selected <- input$mhclinic_select
+    
+    # Display clinics from category selected, and all clinics if no category is selected
+    if (category_selected == "All Categories") {
+      mhm_data_filtered <- mhm_data_filtered
+    } else {
+      mhm_data_filtered <- mhm_data_filtered[grep(category_selected, mhm_data_filtered$general_service_category), ]
+    }
+
+    # Render the state map with tracts (works)
+    output$state_map <- renderLeaflet({
+      state_map_data %>%
+        leaflet() %>%
+        addTiles() %>%
+        addPolygons(popup = ~GEOID)
+      
+      leaflet() %>%
+        addProviderTiles("CartoDB.Positron") %>%
+        setView(state_census_tract_data$longitude[1], state_census_tract_data$latitude[1], 
+                if (state_selected== "DC") {
+                  zoom = 10
+                } else if (state_selected== "AK") {
+                  zoom = 3
+                } else if (state_selected %in% c("RI", "NJ", "CT", "NH", "HI", "VT", "DE")) {
+                  zoom = 7
+                } else {
+                  zoom = 5
+                } 
+                ) %>% 
+
+        addPolygons(data=state_variable_merged,
+                    fillColor = ~pal(state_variable_merged$value),
+                    fillOpacity = .7,
+                    weight = .4,
+                    smoothFactor = .2,
+                    popup =~popup_value_tract()
+                    ) %>%
+         
+        # have to change this
+        addMarkers( data = mhm_data_filtered, 
+                    lng=mhm_data_filtered$longitude, lat=mhm_data_filtered$latitude, popup=mhm_data_filtered$clinic_name) %>%
+        
+        # data = mhm_data_filtered, 
+        # lng=mhm_data_filtered$longitude, lat=mhm_data_filtered$latitude, popup=mhm_data_filtered$clinic_name) %>%
+        
+        # mhm_filtered_mass <- subset(mhm_data_filtered, state_province %in% c("Massachusetts", "Ma"))
+        
+        addLegend(pal=pal,
+                  values=state_variable_merged$value,
+                  position = "bottomright",
+                  title="Crude Prevalence")
+
+    })
+    
+    
+    # Add variable description box
+    output$v_descriptions <- renderDataTable(
+      variable_descriptions_2
+    )
+    
+  })
+  
+  
+}
+
+shinyApp(ui, server)
