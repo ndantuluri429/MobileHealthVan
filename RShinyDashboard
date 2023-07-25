@@ -13,20 +13,23 @@ state_names = sort(unique(census_tract_data$statedesc))
 
 # Variables for census tract data 
 # variable_names = variable_descriptions$Variable
-variable_names = colnames(census_tract_data)[grep("_crudeprev$", colnames(census_tract_data))]
+# variable_names = colnames(census_tract_data)[grep("_crudeprev$", colnames(census_tract_data))]
 
 # -----------------------
 
-census_tract_data <- read_csv("/Users/piadavis/500 Cities/PLACES__Census_Tract_Data__GIS_Friendly_Format___2022_release.csv", show_col_types = FALSE)
+# census_tract_data <- read_csv("/Users/piadavis/500 Cities/PLACES__Census_Tract_Data__GIS_Friendly_Format___2022_release.csv", show_col_types = FALSE)
+census_tract_data <- read_csv("PLACES__Census_Tract_Data__GIS_Friendly_Format___2022_release.csv", show_col_types = FALSE)
 names(census_tract_data) <- tolower(names(census_tract_data))
 
+# add latitude and longitude columns from geolocation
 census_tract_data$longitude <- as.numeric(sub(".*\\((-?\\d+\\.\\d+)\\s-?\\d+\\.\\d+\\).*", "\\1", census_tract_data$geolocation))
 census_tract_data$latitude <- as.numeric(sub(".*\\(-?\\d+\\.\\d+\\s(-?\\d+\\.\\d+)\\).*", "\\1", census_tract_data$geolocation))
 
 # -----------------------
 
 # Mobile Health Map Data
-mhm_data=read_excel('/Users/piadavis/500 Cities/MHM-Data.xlsx')
+# mhm_data=read_excel('/Users/piadavis/500 Cities/MHM-Data.xlsx')
+mhm_data=read_excel('MHM-Data.xlsx')
 # US only
 mhm_filtered <- subset(mhm_data, country == "United States")
 # Clinics with location only
@@ -48,6 +51,35 @@ for (index in na_indices) {
   mhm_data_filtered$geo_state[index] <- zip_to_state(mhm_data_filtered$zip_postal_code[index])
 }
 
+# -----------------------
+# Variables for census tract data 
+
+crudeprevs_descriptions <- c("Current lack of health insurance among adults aged 18-64 years", "Arthritis among adults aged >=18 years", "Crude prevalence of binge drinking among adults aged >=18 years", 
+                             "High blood pressure among adults aged >=18 years", "Taking medicine for high blood pressure control among adults aged >=18 years with high blood pressure", "Cancer (excluding skin cancer) among adults aged >=18 years", 
+                             "Current asthma among adults aged >=18 years", "cervical cancer screening among adult women aged 21–65 years", "Coronary heart disease among adults aged >=18 years", "Visits to doctor for routine checkup within the past year among adults aged >=18 years",
+                             "cholesterol screening among adults aged >=18 years", "Fecal occult blood test, sigmoidoscopy, or colonoscopy among adults aged 50–75 years", "Chronic obstructive pulmonary disease among adults aged >=18 years", 
+                             "Older adult men aged >=65 years who are up to date on a core set of clinical preventive services: Flu shot past year, PPV shot ever, Colorectal cancer screening", 
+                             "Older adult women aged >=65 years who are up to date on a core set of clinical preventive services: Flu shot past year, PPV shot ever, Colorectal cancer screening, and Mammogram past 2 years", 
+                             "Current smoking among adults aged >=18 years", "Visits to dentist or dental clinic among adults aged >=18 years", "Depression among adults aged >=18 years", "Diagnosed diabetes among adults aged >=18 years", 
+                             "Fair or poor health among adults aged >=18 years", "High cholesterol among adults aged >=18 years who have been screened in the past 5 years", "Chronic kidney disease among adults aged >=18 years", "No leisure-time physical activity among adults aged >=18 years", 
+                             "Mammography use among women aged 50–74 years", "Mental health not good for >=14 days among adults aged >=18 years", "Obesity among adults aged >=18 years", "Physical health not good for >=14 days among adults aged >=18 years", "Sleeping less than 7 hours among adults aged >=18 years", 
+                             "Stroke among adults aged >=18 years", "All teeth lost among adults aged >=65 years")
+new_colnames <- colnames(census_tract_data)[grep("_crudeprev$", colnames(census_tract_data))]
+variable_descriptions <- data.frame("Variable" = new_colnames, "Description" = crudeprevs_descriptions)
+variable_short <- c("Lack of health insurance", "Arthritis", "Binge Drinking", "High Blood Pressure", "Medicine for High BP", "Cancer", "Asthma", "Cervical Cancer", "Coronary Heart Disease","Routine Checkup","Cholesterol Screening", "Fecal occult blood test, sigmoidoscopy, or colonoscopy","Chronic obstructive pulmonary disease", "Men Up to Date Core","Women Up to Date Core","Current Smoking", "Dental Visits", "Depression", "Diabetes", "Fair / Poor Health", "High Colesterol", "Chronic Kidney Disease", "No leisure time physical activity","Mammography","Poor Mental Health", "Obesity", "Poor Physical Health", "Poor Sleeping", "Stroke", "Teeth Lost")
+
+variable_descriptions <- transform(variable_descriptions, "Short" = variable_short)
+
+variable_names = sort(variable_descriptions$Short)
+
+# -----------------------
+# Mobile Health Clinic Categories
+clinic_categories = sort(c("Dental", "Mammography", "Other Specialties", "Primary Care", "Behavioral Health", "Sexual and Reproductive Health", "Vision", "Asthma", "Pediatrics", "Preventive", "Maternal and Infant Health"))
+
+# -----------------------
+
+# New data
+census_data <- readRDS("/Users/piadavis/Downloads/family_van_acs.rds")
 
 # -----------------------
 
@@ -57,7 +89,7 @@ ui <- dashboardPage(
     selectInput("state_select", "Select State: ",choices = c("Select a State", state_names), selected = "Select a State"),
     selectInput("variable_select", "Select Variable: ",choices = c("Select a Variable", variable_names), selected = "Select a Variable"),
     # Change clinic categories
-    selectInput("mhclinic_select", "Select Clinic Category: ",choices = c("All Categories", variable_names), selected = "All Categories")
+    selectInput("mhclinic_select", "Select Clinic Category: ",choices = c("All Categories", clinic_categories), selected = "All Categories")
   ),
   dashboardBody(
     leafletOutput("state_map")
@@ -96,9 +128,12 @@ server <- function(input, output) {
     
     variable_selected <- input$variable_select
     
+    # variable_selected <- variable_descriptions$Short[variable_descriptions$Variable == variable_selected]
+
     if (variable_selected == "Select a Variable") {
       subset_state_variable <- state_census_tract_data[,c("tractfips","access2_crudeprev")]
     } else {
+      variable_selected <- variable_descriptions$Variable[variable_descriptions$Short == variable_selected]
       subset_state_variable <- state_census_tract_data[,c("tractfips",variable_selected)]
     }
     # subset_state_variable <- state_census_tract_data[,c("tractfips",variable_selected)]
@@ -121,6 +156,17 @@ server <- function(input, output) {
     # mhm_filtered_state <- subset(mhm_data_filtered, toupper(geo_state) %in% c(toupper(state_selected), state_selected_abbr))
     if (state_selected != "Select a State") {
       mhm_data_filtered <- subset(mhm_data_filtered, toupper(geo_state) %in% c(toupper(state_selected_full), state_selected))
+    }
+    
+    
+    # MH Clinic Category 
+    category_selected <- input$mhclinic_select
+    
+    # Display clinics from category selected, and all clinics if no category is selected
+    if (category_selected == "All Categories") {
+      mhm_data_filtered <- mhm_data_filtered
+    } else {
+      mhm_data_filtered <- mhm_data_filtered[grep(category_selected, mhm_data_filtered$general_service_category), ]
     }
 
     # Render the state map with tracts (works)
@@ -167,6 +213,9 @@ server <- function(input, output) {
                   title="Crude Prevalence")
 
     })
+    
+    
+    # Add variable description box
     
   })
   
