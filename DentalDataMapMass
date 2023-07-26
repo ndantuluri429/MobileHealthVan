@@ -1,0 +1,59 @@
+library(readxl)
+library(tigris)
+library(dplyr)
+library(leaflet)
+library(readxl)
+
+mhm_data=read_excel('/Users/piadavis/500 Cities/MHM-Data.xlsx')
+# US only
+mhm_filtered <- subset(mhm_data, country == "United States")
+mhm_filtered <- subset(mhm_data, country == "United States")
+mhm_data_filtered <- mhm_filtered[complete.cases(mhm_filtered$latitude, mhm_filtered$longitude), ]
+mhm_filtered_mass <- subset(mhm_data_filtered, state_province %in% c("Massachusetts", "Ma"))
+
+
+### Clinics Providing Dental Services
+dental_mhm <- mhm_data_filtered[grep("Dental", mhm_data_filtered$general_service_category), ]
+
+### Clinics Providing Dental Services MA only
+dental_mhm_mass <- subset(dental_mhm, state_province %in% c("Massachusetts", "Ma"))
+
+
+# PLACES info for MA only
+mass <- census_tract_data[census_tract_data$stateabbr == "MA", ]
+
+# New data set with crude prevalence values for dental and tractsfips
+subset_mass_dental <- mass[,c("tractfips","dental_crudeprev" )]
+
+# changed tractfips column name to GEOID to merge 
+colnames(subset_mass_dental) <- c("GEOID", "value")
+
+# Tracts in massachusetts geographical info
+mass_tract_map <- tracts(state="MA", cb=T)
+
+mass_tract_map %>%
+  leaflet() %>%
+  addTiles() %>%
+  addPolygons(popup=~GEOID)
+
+# merge dental data set with massachusetts tract data set
+mass_merged_dental <- geo_join(mass_tract_map, subset_mass_dental, "GEOID", "GEOID")
+
+pal <- colorNumeric("Reds", domain=mass_merged_dental $value)
+popup_ma_dental <- paste0("Crude Prevalence: ", as.character(mass_merged_dental $value),
+                          "\nTract: ", as.character(mass_merged_dental$TRACTCE))
+leaflet() %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  setView(-71.0382679, 42.3489054, zoom = 7) %>%
+  addPolygons(data=mass_merged_dental ,
+              fillColor =~pal(mass_merged_dental $value),
+              fillOpacity = .7,
+              weight = .4,
+              smoothFactor = .2,
+              popup =~popup_ma_dental) %>%
+  addMarkers(data = dental_mhm_mass, lng=dental_mhm_mass$longitude, lat=dental_mhm_mass$latitude, popup=dental_mhm_mass$clinic_name) %>%
+  #Only clinics providing dental services shown
+  addLegend(pal=pal,
+            values=mass_merged_dental$value,
+            position = "bottomright",
+            title="Crude Prevalence Dental")

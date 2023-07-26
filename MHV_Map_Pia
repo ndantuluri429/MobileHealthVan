@@ -1,0 +1,57 @@
+# Mobile health clinics US
+
+library(readxl)
+
+mhm_data=read_excel('/Users/piadavis/500 Cities/MHM-Data.xlsx')
+
+# Clinics in US only
+mhm_filtered <- subset(mhm_data, country == "United States")
+mhm_data_filtered <- mhm_filtered[complete.cases(mhm_filtered$latitude, mhm_filtered$longitude), ]
+
+# Clinics in MA only
+mhm_filtered_mass <- subset(mhm_data_filtered, state_province %in% c("Massachusetts", "Ma"))
+
+# This is adding the tract / geographical info to the mhm data set, based on the lat and long of the 
+# clinic, in order to know in which tracts the clinics are located (in US only)
+
+# df with all tracts in US
+all_tracts <- tracts(cb = TRUE, year = 2022)
+
+all_clinics_sf <- st_as_sf(mhm_data_filtered, coords = c("longitude", "latitude"), crs = st_crs(all_tracts))
+all_clinics_with_tracts <- st_join(all_clinics_sf, all_tracts)
+
+# Tracts that have clinics in US
+all_tracts_with_clinic <- unique(all_clinics_with_tracts$GEOID)
+
+# Added column to all_tracts where value 1 indicates that the tract has a clinic, 
+# and value 0 indicates that the tract does not have a clinic 
+all_tracts$has_clinic <- ifelse(all_tracts$GEOID %in% all_tracts_with_clinic, 1, 0)
+
+# Data set with tracts, their crude prevalences, and column indicating if they have clinic or not 
+all_tracts_with_clinic_and_crudeprev <- geo_join(all_tracts, census_tract_data, "GEOID", "tractfips")
+
+
+# Box plots crude prevalence clinic vs no clinic 
+# (Should filter clincis by category / services they provide)
+
+#Arthritis 
+
+arth_clinic_vs_noclinic <- boxplot(arthritis_crudeprev~has_clinic,
+                                   data=all_tracts_with_clinic_and_crudeprev,
+                                   main="Arthritis crude prevalence in tracts w/ clinic vs. no clinic",
+                                   xlab="Has clinic?",
+                                   ylab="Arthritis crude prevalence",
+                                   col="orange",
+                                   border="brown"
+)
+
+#BP High
+
+bphigh_clinic_vs_noclinic <-boxplot(bphigh_crudeprev~has_clinic,
+                                    data=all_tracts_with_clinic_and_crudeprev,
+                                    main="BP high crude prevalence in tracts w/ clinic vs. no clinic",
+                                    xlab="Has clinic?",
+                                    ylab="BP high crude prevalence",
+                                    col="orange",
+                                    border="brown"
+)
