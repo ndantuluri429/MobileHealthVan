@@ -72,6 +72,12 @@ variable_descriptions <- transform(variable_descriptions, "Short" = variable_sho
 
 variable_names = sort(variable_descriptions$Short)
 
+
+# For table displayed on Dashboard, so user can see details of each variable
+variable_descriptions_2 <- variable_descriptions[, !colnames(variable_descriptions) %in% "Variable"]
+new_order <- c("Short", "Description")
+variable_descriptions_2 <- variable_descriptions_2[, new_order]
+
 # -----------------------
 # Mobile Health Clinic Categories
 clinic_categories = sort(c("Dental", "Mammography", "Other Specialties", "Primary Care", "Behavioral Health", "Sexual and Reproductive Health", "Vision", "Asthma", "Pediatrics", "Preventive", "Maternal and Infant Health"))
@@ -89,16 +95,21 @@ ui <- dashboardPage(
     selectInput("state_select", "Select State: ",choices = c("Select a State", state_names), selected = "Select a State"),
     selectInput("variable_select", "Select Variable: ",choices = c("Select a Variable", variable_names), selected = "Select a Variable"),
     # Change clinic categories
+    # Change this so that i can select more than one 
     selectInput("mhclinic_select", "Select Clinic Category: ",choices = c("All Categories", clinic_categories), selected = "All Categories")
   ),
   dashboardBody(
-    leafletOutput("state_map")
+    leafletOutput("state_map"),
+    br(),
+    br(),
+    box(title = "Variable Descriptions", dataTableOutput("v_descriptions"), width = 20)
   )
 )
 
 server <- function(input, output) {
   # Load the U.S. tract shapefile, starts at MA because whole country cannot be mapped? I think
-  us_tracts <- tracts(state="MA", cb=T, year = 2019)
+  # us_tracts <- tracts(state="MA", cb=T, year = 2019)
+  us_tracts <- states()
   
   # Observe changes in the state selection and update the map accordingly
   observe({
@@ -107,6 +118,11 @@ server <- function(input, output) {
     state_selected <- input$state_select
     # below is for use in MHM data, full name of state
     state_selected_full <- input$state_select
+    
+    # Reactive value to check if "Select a State" is chosen
+    selected_state <- reactive({
+      input$state_select
+    })
     
     # Filter the data for the selected state
     if (state_selected == "Select a State") {
@@ -117,19 +133,28 @@ server <- function(input, output) {
       } else {
         state_selected <- state.abb[match(state_selected, state.name)]
       }
-      state_map_data <- tracts(state=state_selected, cb=T, year = 2019)
-      # state_map_data <- tracts(state=state_selected, cb=T, year = 2015)
+      # new if statement
+      if (state_selected == "AK" | state_selected == "HI") {
+        # Have to use 2019 census tracts because 2015 data doesn't work for Alaska or Hawaii
+        state_map_data <- tracts(state=state_selected, cb=T, year = 2019)
+      } else {
+        # All states other than HI and AK use 2015 data
+        # state_map_data <- tracts(state=state_selected, cb=T, year = 2019)
+        state_map_data <- tracts(state=state_selected, cb=T, year = 2015)
+      }
     }
     
     
-
+    
     # For PLACES data layer
-    state_census_tract_data <- census_tract_data[census_tract_data$stateabbr == state_selected, ]
+    if (state_selected != "Select a State") {
+      state_census_tract_data <- census_tract_data[census_tract_data$stateabbr == state_selected, ]
+    }
     
     variable_selected <- input$variable_select
     
     # variable_selected <- variable_descriptions$Short[variable_descriptions$Variable == variable_selected]
-
+    
     if (variable_selected == "Select a Variable") {
       subset_state_variable <- state_census_tract_data[,c("tractfips","access2_crudeprev")]
     } else {
@@ -145,7 +170,7 @@ server <- function(input, output) {
     # Palette (doesn't work? - works now)
     pal <- colorNumeric("Reds", domain = NULL, na.color = "gray")         #can change domain if needed
     # pal <- colorNumeric("Reds", domain=state_variable_merged$value, na.color = "gray")
-
+    
     #Pop up
     popup_value_tract <- reactive ({
       paste0("Crude Prevalence: ", as.character(state_variable_merged$value),
@@ -168,54 +193,77 @@ server <- function(input, output) {
     } else {
       mhm_data_filtered <- mhm_data_filtered[grep(category_selected, mhm_data_filtered$general_service_category), ]
     }
-
+    
     # Render the state map with tracts (works)
     output$state_map <- renderLeaflet({
-      state_map_data %>%
-        leaflet() %>%
-        addTiles() %>%
-        addPolygons(popup = ~GEOID)
       
-      leaflet() %>%
-        addProviderTiles("CartoDB.Positron") %>%
-        setView(state_census_tract_data$longitude[1], state_census_tract_data$latitude[1], 
-                if (state_selected== "DC") {
-                  zoom = 10
-                } else if (state_selected== "AK") {
-                  zoom = 3
-                } else if (state_selected %in% c("RI", "NJ", "CT", "NH", "HI", "VT", "DE")) {
-                  zoom = 7
-                } else {
-                  zoom = 5
-                } 
-                ) %>% 
-
-        addPolygons(data=state_variable_merged,
-                    fillColor = ~pal(state_variable_merged$value),
-                    fillOpacity = .7,
-                    weight = .4,
-                    smoothFactor = .2,
-                    popup =~popup_value_tract()
-                    ) %>%
-         
-        # have to change this
+      if (selected_state() == "Select a State") {
+        state_map_data %>%
+        leaflet() %>%
+          addTiles() %>%
+          addPolygons(popup = ~NAME) %>%
+          # addPolygons(popup = ~GEOID)
+          addMarkers(
+            data = mhm_data_filtered,
+            lng = mhm_data_filtered$longitude,
+            lat = mhm_data_filtered$latitude,
+            popup= ~paste("<b>", mhm_data_filtered$clinic_name, "</b>", "<br>",
+                          "Services: ", mhm_data_filtered$general_service_category)
+          )
+      } else {
+        state_map_data %>%
+        leaflet() %>%
+          addProviderTiles("CartoDB.Positron") %>%
+          setView(state_census_tract_data$longitude[1], state_census_tract_data$latitude[1], 
+                  if (state_selected== "DC") {
+                    zoom = 10
+                  } else if (state_selected== "AK") {
+                    zoom = 3
+                  } else if (state_selected %in% c("RI", "NJ", "CT", "NH", "HI", "VT", "DE")) {
+                    zoom = 7
+                  } else {
+                    zoom = 5
+                  } 
+          ) %>% 
+          
+          addPolygons(data=state_variable_merged,
+                      fillColor = ~pal(state_variable_merged$value),
+                      fillOpacity = .7,
+                      weight = .4,
+                      smoothFactor = .2,
+                      popup =~popup_value_tract()
+          ) %>%
+          
+          addLegend(pal=pal,
+                    values=state_variable_merged$value,
+                    position = "bottomright",
+                    title="Crude Prevalence") %>%
+        
+        
+        
         addMarkers( data = mhm_data_filtered, 
-                    lng=mhm_data_filtered$longitude, lat=mhm_data_filtered$latitude, popup=mhm_data_filtered$clinic_name) %>%
+                    lng=mhm_data_filtered$longitude, lat=mhm_data_filtered$latitude, 
+                    popup= ~paste("<b>", mhm_data_filtered$clinic_name, "</b>", "<br>",
+                                  "Services: ", mhm_data_filtered$general_service_category))
+        
+      }
+      
+
         
         # data = mhm_data_filtered, 
         # lng=mhm_data_filtered$longitude, lat=mhm_data_filtered$latitude, popup=mhm_data_filtered$clinic_name) %>%
         
         # mhm_filtered_mass <- subset(mhm_data_filtered, state_province %in% c("Massachusetts", "Ma"))
         
-        addLegend(pal=pal,
-                  values=state_variable_merged$value,
-                  position = "bottomright",
-                  title="Crude Prevalence")
-
+        
+      
     })
     
     
     # Add variable description box
+    output$v_descriptions <- renderDataTable(
+      variable_descriptions_2
+    )
     
   })
   
