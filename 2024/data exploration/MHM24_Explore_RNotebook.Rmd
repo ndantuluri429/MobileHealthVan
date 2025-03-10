@@ -1,0 +1,144 @@
+---
+title: "MHM 24 Data Exploration"
+output: html_notebook
+---
+
+```{r}
+mhm_24_raw_data <- read_excel("/Users/nehadantuluri/Downloads/MHV2024.xlsx")
+View(mhm_24_raw_data)
+```
+
+```{r}
+# clean column names w/ janitor
+# standardizes the column names by converting them to lowercase, replacing spaces with underscores, and removing any special characters.
+mhm_24_raw_data_clean<-clean_names(mhm_24_raw_data)
+colnames(mhm_24_raw_data_clean)
+
+```
+```{r}
+# view full dataset with cleaned column names
+View(mhm_24_raw_data_clean)
+
+```
+
+```{r}
+# show first 6 rows & last 6 rows of data set
+head(mhm_24_raw_data_clean)
+tail(mhm_24_raw_data_clean)
+```
+```{r}
+# overview of data set
+glimpse(mhm_24_raw_data_clean)
+```
+
+
+```{r}
+# how many data values for a  specific variable?
+length(mhm_24_raw_data_clean$title) # 1453 data points of this
+```
+
+```{r}
+# how to identify class of a specific variable
+class(mhm_24_raw_data_clean$title) # chr variable
+```
+
+
+```{r}
+## UNIQUENESS OF DATA POINTS
+# how many unique values for post_type?
+unique(mhm_24_raw_data_clean$post_type) 
+```
+
+```{r}
+# how many unique values for status?
+unique(mhm_24_raw_data_clean$status) 
+```
+
+
+```{r}
+# how many unique values for organization_type
+unique(mhm_24_raw_data_clean$organization_type) 
+```
+
+
+```{r}
+# how many unique values for organization_type_other
+unique(mhm_24_raw_data_clean$organization_type_other) 
+```
+
+
+```{r}
+# how many unique values for source_of_funding 
+unique(mhm_24_raw_data_clean$source_of_funding)
+```
+
+
+```{r}
+# how many unique values for organization_collaboration_other
+unique(mhm_24_raw_data_clean$organization_collaboration_other) 
+```
+
+
+```{r}
+# how many unique values for clinic_country
+unique(mhm_24_raw_data_clean$clinic_country) 
+```
+
+
+```{r}
+# how many unique values for care_delivered 
+unique(mhm_24_raw_data_clean$care_delivered) 
+```
+
+
+```{r}
+# how many unique values for community_type 
+unique(mhm_24_raw_data_clean$community_type) 
+```
+
+```{r}
+# how many unique values for population_served
+unique(mhm_24_raw_data_clean$population_served) 
+```
+
+```{r}
+
+# Note: did not look at the unique variables for "id", "clinic_id", "title", "contact_phone_number", "website", "clinic_street_address", "clinic_address_line_2", "clinic_city", "clinic_state", "clinic_zip", "clinic_geolocation_address", "clinic_geolocation_lat", & "clinic_geolocation_lng" 
+
+# this is because each clinic has a unique & specific value of each of the above variables. Even if some values (i.e: clinic_state, clinic_city, etc.) may be the same, it accounts for unique aspects of each row and is not largely categorically grouped like care_delivered, community_type, population_served_etc. 
+
+```
+
+
+```{r}
+# View(sort(table(mhm_24_raw_data_clean$population_served)))
+barplot(sort(table(mhm_24_raw_data_clean$population_served), decreasing = TRUE)) # makes a terrible barplot bc values are so confusing
+```
+
+```{r}
+
+mhm_24_raw_data_clean %>% 
+  select(population_served) %>% 
+  count(population_served) %>% # counts the number of each per specific variable
+  arrange(desc(n)) %>%  # arranging in descending order
+  View()
+  
+```
+
+```{r}
+# find missing data and why it is missing
+mhm_24_raw_data_clean[is.na(mhm_24_raw_data_clean$population_served), ]
+# View(mhm_24_raw_data_clean[is.na(mhm_24_raw_data_clean$population_served), ])
+
+```
+
+
+
+
+
+
+
+
+
+
+
